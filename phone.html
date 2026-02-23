@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>📡 Streaming...</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@700&display=swap');
+    :root { --green:#00ff88; --red:#ff3b3b; --bg:#060a0f; --border:#1a2a3a; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--bg); color:var(--green); font-family:'Share Tech Mono',monospace; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; }
+    body::before { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,136,.015) 2px,rgba(0,255,136,.015) 4px); pointer-events:none; }
+    .container { position:relative; z-index:1; width:100%; max-width:420px; display:flex; flex-direction:column; align-items:center; gap:14px; }
+    h1 { font-family:'Rajdhani',sans-serif; font-size:1.6rem; letter-spacing:4px; text-transform:uppercase; text-shadow:0 0 20px rgba(0,255,136,.5); }
+    .sub { font-size:.7rem; color:rgba(0,255,136,.4); letter-spacing:2px; }
+    .video-wrapper { position:relative; width:100%; border:1px solid var(--border); border-radius:4px; overflow:hidden; background:#000; aspect-ratio:3/4; }
+    video { width:100%; height:100%; object-fit:cover; }
+    .badge { position:absolute; top:10px; left:10px; display:flex; align-items:center; gap:6px; background:rgba(0,0,0,.75); border:1px solid var(--red); padding:4px 10px; border-radius:2px; font-size:.7rem; letter-spacing:2px; color:var(--red); }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--red); animation:blink 1s infinite; }
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
+    .viewers-badge { position:absolute; top:10px; right:10px; background:rgba(0,0,0,.75); border:1px solid var(--border); padding:4px 10px; border-radius:2px; font-size:.7rem; letter-spacing:1px; color:rgba(0,255,136,.7); }
+    .status { font-size:.72rem; letter-spacing:1.5px; color:rgba(0,255,136,.5); text-align:center; }
+    .status.error { color:var(--red); }
+    .status.success { color:var(--green); }
+    .status.warning { color:#ffcc00; }
+    .flip-btn { background:transparent; border:1px solid rgba(0,255,136,.4); color:rgba(0,255,136,.7); font-family:'Share Tech Mono',monospace; font-size:.75rem; padding:8px 16px; border-radius:3px; cursor:pointer; letter-spacing:2px; }
+    .flip-btn:active { background:rgba(0,255,136,.1); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📡 STREAMING</h1>
+  <p class="sub">YOUR CAMERA IS BEING STREAMED TO PC</p>
+
+  <div class="video-wrapper">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="badge"><div class="dot"></div> LIVE</div>
+    <div class="viewers-badge" id="viewersBadge">0 VIEWERS</div>
+  </div>
+
+  <button class="flip-btn" onclick="flipCamera()">🔄 FLIP CAMERA</button>
+  <div class="status" id="status">STARTING CAMERA...</div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  let localStream = null;
+  let peerConnections = {};
+  let facingMode = 'environment';
+  let viewerCount = 0;
+
+  const iceConfig = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  async function startCamera() {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+      document.getElementById('video').srcObject = localStream;
+      setStatus('CONNECTED — WAITING FOR PC VIEWER...', 'success');
+      socket.emit('streamer-ready');
+    } catch (err) {
+      setStatus('CAMERA ERROR: ' + err.message, 'error');
+    }
+  }
+
+  async function flipCamera() {
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+    document.getElementById('video').srcObject = localStream;
+    // Update all existing peer connections
+    for (const id in peerConnections) {
+      const pc = peerConnections[id];
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
+    }
+  }
+
+  // A new viewer wants to connect — create offer
+  socket.on('new-viewer', async ({ viewerId }) => {
+    const pc = new RTCPeerConnection(iceConfig);
+    peerConnections[viewerId] = pc;
+
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) socket.emit('ice-candidate', { candidate: e.candidate, to: viewerId });
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('offer', { sdp: pc.localDescription, to: viewerId });
+
+    viewerCount++;
+    updateViewers();
+    setStatus('📡 STREAMING TO ' + viewerCount + ' VIEWER(S)', 'success');
+  });
+
+  socket.on('answer', async ({ sdp, from }) => {
+    const pc = peerConnections[from];
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+  });
+
+  socket.on('ice-candidate', async ({ candidate, from }) => {
+    const pc = peerConnections[from];
+    if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+  });
+
+  function updateViewers() {
+    document.getElementById('viewersBadge').textContent = viewerCount + ' VIEWER(S)';
+  }
+
+  function setStatus(msg, type) {
+    const el = document.getElementById('status');
+    el.textContent = msg; el.className = 'status ' + (type || '');
+  }
+
+  startCamera();
+</script>
+</body>
+</html>
