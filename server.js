@@ -9,42 +9,67 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ─── ICE/TURN config endpoint ──────────────────────────────────────────────────
+// Free public TURN servers via openrelay.metered.ca
+// For production: sign up at https://www.metered.ca and replace credentials
+app.get('/ice-config', (req, res) => {
+  res.json({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:80?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
+    ]
+  });
+});
+
+// ─── Socket.IO signalling ──────────────────────────────────────────────────────
 let streamerSocket = null;
 let viewerSockets = [];
 
 io.on('connection', (socket) => {
   console.log('Connected:', socket.id);
 
-  // Phone registers as streamer
   socket.on('streamer-ready', () => {
     streamerSocket = socket;
     console.log('Streamer connected');
-    // Notify all waiting viewers
     viewerSockets.forEach(v => v.emit('streamer-available'));
   });
 
-  // PC registers as viewer
   socket.on('viewer-ready', () => {
     viewerSockets.push(socket);
     console.log('Viewer connected, total:', viewerSockets.length);
-    // If streamer already online, notify this viewer
     if (streamerSocket) socket.emit('streamer-available');
   });
 
-  // WebRTC signaling relay
   socket.on('offer', (data) => {
-    // Streamer sends offer to a specific viewer
     const viewer = viewerSockets.find(v => v.id === data.to);
     if (viewer) viewer.emit('offer', { sdp: data.sdp, from: socket.id });
   });
 
   socket.on('answer', (data) => {
-    // Viewer sends answer back to streamer
     if (streamerSocket) streamerSocket.emit('answer', { sdp: data.sdp, from: socket.id });
   });
 
   socket.on('ice-candidate', (data) => {
-    // Relay ICE candidates between peers
     if (data.to === 'streamer' && streamerSocket) {
       streamerSocket.emit('ice-candidate', { candidate: data.candidate, from: socket.id });
     } else {
@@ -53,7 +78,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Viewer requests stream from streamer
   socket.on('request-stream', () => {
     if (streamerSocket) {
       streamerSocket.emit('new-viewer', { viewerId: socket.id });
