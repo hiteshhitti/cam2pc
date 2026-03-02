@@ -9,39 +9,36 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── ICE/TURN config endpoint ──────────────────────────────────────────────────
-// Free public TURN servers via openrelay.metered.ca
-// For production: sign up at https://www.metered.ca and replace credentials
 app.get('/ice-config', (req, res) => {
   res.json({
     iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun.relay.metered.ca:80' },
       {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+        urls: 'turn:standard.relay.metered.ca:80',
+        username: '0c11603c7e0e3fe045be2d35',
+        credential: '2NMhpd3HU0cuBKPx'
       },
       {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+        urls: 'turn:standard.relay.metered.ca:80?transport=tcp',
+        username: '0c11603c7e0e3fe045be2d35',
+        credential: '2NMhpd3HU0cuBKPx'
       },
       {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+        urls: 'turn:standard.relay.metered.ca:443',
+        username: '0c11603c7e0e3fe045be2d35',
+        credential: '2NMhpd3HU0cuBKPx'
       },
       {
-        urls: 'turn:openrelay.metered.ca:80?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+        urls: 'turns:standard.relay.metered.ca:443?transport=tcp',
+        username: '0c11603c7e0e3fe045be2d35',
+        credential: '2NMhpd3HU0cuBKPx'
       }
     ]
   });
 });
 
-// ─── Socket.IO signalling ──────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
+
 let streamerSocket = null;
 let viewerSockets = [];
 
@@ -96,5 +93,4 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log('Server running on port', PORT));
